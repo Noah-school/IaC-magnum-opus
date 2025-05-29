@@ -70,6 +70,7 @@
         - "{{ config_dir }}/jellyfin"
         - "{{ config_dir }}/jackett"
         - "{{ config_dir }}/letsencrypt"
+        - "{{ config_dir }}/jackett/Jackett/Indexers"
 
     - name: Ensure movies and tv shows folders exist
       file:
@@ -82,14 +83,6 @@
         - "{{ media_dir }}/movies"
         - "{{ media_dir }}/tv"
 
-    - name: Ensure Jellyfin config directory exists
-      file:
-        path: /mnt/data/config/jellyfin
-        state: directory
-        owner: "{{ puid }}"
-        group: "{{ pgid }}"
-        mode: "0755"
-
     - name: Create Jellyfin subdirectories
       file:
         path: "{{ item }}"
@@ -98,11 +91,11 @@
         group: "{{ pgid }}"
         mode: "0755"
       loop:
-        - "/mnt/data/config/jellyfin/data"
-        - "/mnt/data/config/jellyfin/data/root"
-        - "/mnt/data/config/jellyfin/data/root/default"
-        - "/mnt/data/config/jellyfin/data/root/default/Shows"
-        - "/mnt/data/config/jellyfin/data/root/default/Movies"
+        - "{{ config_dir }}jellyfin/data"
+        - "{{ config_dir }}jellyfin/data/root"
+        - "{{ config_dir }}jellyfin/data/root/default"
+        - "{{ config_dir }}jellyfin/data/root/default/Shows"
+        - "{{ config_dir }}jellyfin/data/root/default/Movies"
 
     - name: Create Docker network
       community.docker.docker_network:
@@ -314,7 +307,7 @@
     # - name: Copy config files
     #   copy:
     #     src: ./config/
-    #     dest: /mnt/data/config/
+    #     dest: {{ config_dir }}
     #     owner: "{{ puid }}"
     #     group: "{{ pgid }}"
     #     mode: "0644"
@@ -335,7 +328,7 @@
         - name: Copy config files
           copy:
             src: "{{ item.path }}"
-            dest: "/mnt/data/config/{{ item.path | regex_replace('^config/', '') }}"
+            dest: "{{ config_dir }}/{{ item.path | regex_replace('^config/', '') }}"
             owner: "{{ puid }}"
             group: "{{ pgid }}"
             mode: "0644"
