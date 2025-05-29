@@ -2,3 +2,6 @@ vars.yml
 test.yml
 keys/
 other/
+temp/
+hosts
+config/
