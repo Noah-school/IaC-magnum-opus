@@ -9,7 +9,8 @@ traefik_domain: domain.com
 traefik_basic_auth: "user:hashedpassword"
 jellyfin_port: 8096
 ombi_port: 3579
-qbittorrent_web_port: "8080"
+qbittorrent_web_port: 8080
+jackett_port: 9117
 radarr_port: 7878
 sonarr_port: 8989
 traefik_port: 80
