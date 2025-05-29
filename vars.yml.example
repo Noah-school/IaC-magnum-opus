@@ -1,0 +1,16 @@
+puid: "1000"
+pgid: "1000"
+tz: Europe/Brussels
+download_dir: /mnt/data/downloads
+media_dir: /mnt/data/media
+config_dir: /mnt/data/config
+traefik_config_dir: /mnt/data/config/traefik
+traefik_domain: domain.com
+traefik_basic_auth: "user:hashedpassword"
+jellyfin_port: 8096
+ombi_port: 3579
+qbittorrent_web_port: "8080"
+radarr_port: 7878
+sonarr_port: 8989
+traefik_port: 80
+traefik_https_port: 443

@@ -1,0 +1,8 @@
+[servername]
+x.x.x.x
+
+[server:vars]
+ansible_ssh_private_key_file=/path/to/key
+ansible_user=UserName
+# ansible_become_pass=SecurePassword
+# ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'

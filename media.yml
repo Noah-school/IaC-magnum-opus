@@ -1,0 +1,370 @@
+---
+- name: Configure base system
+  hosts: server
+  become: true
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Install dependencies
+      dnf:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - curl
+        state: present
+
+    - name: Add Docker repository
+      get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install Docker CE
+      dnf:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+
+    - name: Start and enable Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create docker user
+      user:
+        name: dokwerker
+        groups: docker
+        append: yes
+        shell: /bin/bash
+
+    - name: Create internal Docker network
+      community.docker.docker_network:
+        name: media_network
+        state: present
+        internal: true
+
+- name: Deploy media stack
+  hosts: server
+  become: true
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create media directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ puid }}"
+        group: "{{ pgid }}"
+        mode: "0755"
+      loop:
+        - "{{ download_dir }}"
+        - "{{ media_dir }}"
+        - "{{ config_dir }}/traefik"
+        - "{{ config_dir }}/ombi"
+        - "{{ config_dir }}/qbittorrent"
+        - "{{ config_dir }}/radarr"
+        - "{{ config_dir }}/sonarr"
+        - "{{ config_dir }}/jellyfin"
+        - "{{ config_dir }}/jackett"
+        - "{{ config_dir }}/letsencrypt"
+
+    - name: Ensure movies and tv shows folders exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ puid }}"
+        group: "{{ pgid }}"
+        mode: "0755"
+      loop:
+        - "{{ media_dir }}/movies"
+        - "{{ media_dir }}/tv"
+
+    - name: Ensure Jellyfin config directory exists
+      file:
+        path: /mnt/data/config/jellyfin
+        state: directory
+        owner: "{{ puid }}"
+        group: "{{ pgid }}"
+        mode: "0755"
+
+    - name: Create Jellyfin subdirectories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ puid }}"
+        group: "{{ pgid }}"
+        mode: "0755"
+      loop:
+        - "/mnt/data/config/jellyfin/data"
+        - "/mnt/data/config/jellyfin/data/root"
+        - "/mnt/data/config/jellyfin/data/root/default"
+        - "/mnt/data/config/jellyfin/data/root/default/Shows"
+        - "/mnt/data/config/jellyfin/data/root/default/Movies"
+
+    - name: Create Docker network
+      community.docker.docker_network:
+        name: traefik_network
+        state: present
+
+    - name: Deploy Traefik container
+      community.docker.docker_container:
+        name: traefik
+        image: traefik:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        ports:
+          - "80:80"
+          - "443:443"
+          - "8080:8080"
+        volumes:
+          - "/var/run/docker.sock:/var/run/docker.sock:ro"
+          - "{{ config_dir }}/traefik:/etc/traefik"
+          - "{{ config_dir }}/letsencrypt:/letsencrypt"
+        command:
+          - "--api.dashboard=true"
+          - "--api.insecure=true"
+          - "--log.level=DEBUG"
+          - "--providers.docker=true"
+          - "--providers.docker.exposedbydefault=false"
+          - "--entrypoints.web.address=:80"
+          - "--entrypoints.websecure.address=:443"
+          - "--certificatesresolvers.le.acme.email=trustyourai@gmail.com"
+          - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+          - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.traefik.rule: "Host(`traefik.{{ traefik_domain }}`)"
+          traefik.http.routers.traefik.entrypoints: "websecure"
+          traefik.http.routers.traefik.tls.certresolver: "le"
+          traefik.http.routers.traefik.service: "api@internal"
+          traefik.http.routers.traefik.middlewares: "auth"
+          traefik.http.middlewares.auth.basicauth.users: "{{ traefik_basic_auth }}"
+
+    - name: Deploy Jellyfin container
+      community.docker.docker_container:
+        name: jellyfin
+        image: lscr.io/linuxserver/jellyfin:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        env:
+          PUID: "{{ puid }}"
+          PGID: "{{ pgid }}"
+          TZ: "{{ tz }}"
+        volumes:
+          - "{{ config_dir }}/jellyfin:/config"
+          - "{{ media_dir }}:/data/media"
+        ports:
+          - "{{ jellyfin_port }}:{{ jellyfin_port }}"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.jellyfin.rule: "Host(`jellyfin.{{ traefik_domain }}`)"
+          traefik.http.routers.jellyfin.entrypoints: "websecure"
+          traefik.http.routers.jellyfin.tls: "true"
+          traefik.http.routers.jellyfin.tls.certresolver: "le"
+          traefik.http.services.jellyfin.loadbalancer.server.port: "{{ jellyfin_port }}"
+
+    - name: Deploy Ombi container
+      community.docker.docker_container:
+        name: ombi
+        image: lscr.io/linuxserver/ombi:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        env:
+          PUID: "{{ puid }}"
+          PGID: "{{ pgid }}"
+          TZ: "{{ tz }}"
+        volumes:
+          - "{{ config_dir }}/ombi:/config"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.ombi.rule: "Host(`ombi.{{ traefik_domain }}`)"
+          traefik.http.routers.ombi.entrypoints: "websecure"
+          traefik.http.routers.ombi.tls: "true"
+          traefik.http.routers.ombi.tls.certresolver: "le"
+          traefik.http.services.ombi.loadbalancer.server.port: "3579"
+
+    - name: Deploy qBittorrent container
+      community.docker.docker_container:
+        name: qbittorrent
+        image: lscr.io/linuxserver/qbittorrent:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        env:
+          PUID: "{{ puid }}"
+          PGID: "{{ pgid }}"
+          TZ: "{{ tz }}"
+          WEBUI_PORT: "{{ qbittorrent_web_port }}"
+        volumes:
+          - "{{ config_dir }}/qbittorrent:/config"
+          - "{{ download_dir }}:/downloads"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.qbittorrent.rule: "Host(`qbittorrent.{{ traefik_domain }}`)"
+          traefik.http.routers.qbittorrent.entrypoints: "websecure"
+          traefik.http.routers.qbittorrent.tls: "true"
+          traefik.http.routers.qbittorrent.tls.certresolver: "le"
+          traefik.http.services.qbittorrent.loadbalancer.server.port: "8080"
+
+    - name: Deploy Jackett container
+      community.docker.docker_container:
+        name: jackett
+        image: lscr.io/linuxserver/jackett:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        env:
+          PUID: "{{ puid }}"
+          PGID: "{{ pgid }}"
+          TZ: "{{ tz }}"
+          AUTO_UPDATE: "true"
+          RUN_OPTS: ""
+        volumes:
+          - "{{ config_dir }}/jackett:/config"
+          - "{{ download_dir }}:/downloads"
+        ports:
+          - "{{ jackett_port }}:{{ jackett_port }}"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.jackett.rule: "Host(`jackett.{{ traefik_domain }}`)"
+          traefik.http.routers.jackett.entrypoints: "websecure"
+          traefik.http.routers.jackett.tls: "true"
+          traefik.http.routers.jackett.tls.certresolver: "le"
+          traefik.http.services.jackett.loadbalancer.server.port: "9117"
+
+    - name: Deploy Radarr container
+      community.docker.docker_container:
+        name: radarr
+        image: lscr.io/linuxserver/radarr:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        env:
+          PUID: "{{ puid }}"
+          PGID: "{{ pgid }}"
+          TZ: "{{ tz }}"
+        volumes:
+          - "{{ config_dir }}/radarr:/config"
+          - "{{ media_dir }}:/movies"
+          - "{{ download_dir }}:/downloads"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.radarr.rule: "Host(`radarr.{{ traefik_domain }}`)"
+          traefik.http.routers.radarr.entrypoints: "websecure"
+          traefik.http.routers.radarr.tls: "true"
+          traefik.http.routers.radarr.tls.certresolver: "le"
+          traefik.http.services.radarr.loadbalancer.server.port: "7878"
+
+    - name: Deploy Sonarr container
+      community.docker.docker_container:
+        name: sonarr
+        image: lscr.io/linuxserver/sonarr:latest
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik_network
+          - name: media_network
+        env:
+          PUID: "{{ puid }}"
+          PGID: "{{ pgid }}"
+          TZ: "{{ tz }}"
+        volumes:
+          - "{{ config_dir }}/sonarr:/config"
+          - "{{ media_dir }}:/tv"
+          - "{{ download_dir }}:/downloads"
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.sonarr.rule: "Host(`sonarr.{{ traefik_domain }}`)"
+          traefik.http.routers.sonarr.entrypoints: "websecure"
+          traefik.http.routers.sonarr.tls: "true"
+          traefik.http.routers.sonarr.tls.certresolver: "le"
+          traefik.http.services.sonarr.loadbalancer.server.port: "8989"
+
+    - name: stop containers
+      docker_container:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - jellyfin
+        - ombi
+        - sonarr
+        - radarr
+        - qbittorrent
+        - jackett
+
+    # original boring approach that doesn't show progress
+    # - name: Copy config files
+    #   copy:
+    #     src: ./config/
+    #     dest: /mnt/data/config/
+    #     owner: "{{ puid }}"
+    #     group: "{{ pgid }}"
+    #     mode: "0644"
+    #     directory_mode: "0755"
+    #     force: yes
+
+    # alternative using a looping  approach to show progress
+    - name: Copy config files recursively
+      block:
+        - name: Find all files in config directory
+          find:
+            paths: ./config
+            recurse: yes
+          delegate_to: localhost
+          become: false # because i dont want to run this as root
+          register: config_files
+
+        - name: Copy config files
+          copy:
+            src: "{{ item.path }}"
+            dest: "/mnt/data/config/{{ item.path | regex_replace('^config/', '') }}"
+            owner: "{{ puid }}"
+            group: "{{ pgid }}"
+            mode: "0644"
+            directory_mode: "0755"
+            force: yes
+          loop: "{{ config_files.files }}"
+          loop_control:
+            label: "Copying {{ item.path}}"
+            index_var: index
+          register: copy_results
+
+    - name: start container
+      docker_container:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - jellyfin
+        - ombi
+        - sonarr
+        - radarr
+        - qbittorrent
+        - jackett
+
+    - name: Get qBittorrent container logs for password
+      command: docker logs qbittorrent
+      register: qbt_logs
+      changed_when: false
+
+    - name: Extract and display qBittorrent password
+      debug:
+        msg: "qBittorrent username: admin, password: {{ qbt_logs.stdout | regex_findall('The WebUI administrator password.*?: ([a-zA-Z0-9]+)') | last }}"
+      when: qbt_logs.stdout is search('WebUI administrator password')
