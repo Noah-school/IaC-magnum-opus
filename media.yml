@@ -368,3 +368,10 @@
       debug:
         msg: "qBittorrent username: admin, password: {{ qbt_logs.stdout | regex_findall('The WebUI administrator password.*?: ([a-zA-Z0-9]+)') | last }}"
       when: qbt_logs.stdout is search('WebUI administrator password')
+    
+    - name: Display completion message
+      pause:
+        seconds: 1
+        prompt: "\n{{ lookup('template', 'template/mediaLinks.j2') }}"
+      vars:
+        domain: "{{ traefik_domain }}"
