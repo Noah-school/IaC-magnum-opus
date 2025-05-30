@@ -30,24 +30,24 @@ graph TD
     end
 
     subgraph "Docker Host"
-        Traefik[Traefik\nReverse Proxy]
+        Traefik[Traefik Reverse Proxy]
 
         subgraph "Media Playback"
-            JF[Jellyfin\nMedia Server]
+            JF[Jellyfin Media Server]
         end
         
         subgraph "Request Management"
-            Ombi[Ombi\nMedia Requests]
+            Ombi[Ombi Media Requests]
         end
         
         subgraph "Download Management" 
-            QB[qBittorrent\nTorrent Client]
-            Jackett[Jackett\nTorrent Indexer]
+            QB[qBittorrent Torrent Client]
+            Jackett[Jackett Torrent Indexer]
         end
         
         subgraph "Media Management"
-            Sonarr[Sonarr\nTV Shows]
-            Radarr[Radarr\nMovies]
+            Sonarr[Sonarr TV Shows]
+            Radarr[Radarr Movies]
         end
 
         subgraph "Storage"
