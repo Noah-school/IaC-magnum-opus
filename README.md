@@ -88,7 +88,7 @@ graph TD
 - **Traefik**: Reverse proxy with automatic SSL certificate management
 
 ## Prerequisites
-- A server running CentOS/RHEL-compatible Linux
+- A server running RockyOS
 - Ansible installed on your local machine
 - Domain name with DNS configured to point to your server IP
 - SSH access to the server
