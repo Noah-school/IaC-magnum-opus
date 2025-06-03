@@ -91,11 +91,11 @@
         group: "{{ pgid }}"
         mode: "0755"
       loop:
-        - "{{ config_dir }}jellyfin/data"
-        - "{{ config_dir }}jellyfin/data/root"
-        - "{{ config_dir }}jellyfin/data/root/default"
-        - "{{ config_dir }}jellyfin/data/root/default/Shows"
-        - "{{ config_dir }}jellyfin/data/root/default/Movies"
+        - "{{ config_dir }}/jellyfin/data"
+        - "{{ config_dir }}/jellyfin/data/root"
+        - "{{ config_dir }}/jellyfin/data/root/default"
+        - "{{ config_dir }}/jellyfin/data/root/default/Shows"
+        - "{{ config_dir }}/jellyfin/data/root/default/Movies"
 
     - name: Create Docker network
       community.docker.docker_network:
